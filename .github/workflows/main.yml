@@ -1,0 +1,32 @@
+name: Build APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cari proyek
+        id: find
+        run: |
+          ZIP=$(find . -maxdepth 2 -iname '*.zip' | head -n 1)
+          if [ -n "$ZIP" ]; then echo "Membongkar: $ZIP"; unzip -oq "$ZIP"; fi
+          SET=$(find . -name settings.gradle -not -path './.git/*' | head -n 1)
+          if [ -z "$SET" ]; then echo "settings.gradle tidak ditemukan. Upload ZIP proyek ke repositori ini."; exit 1; fi
+          echo "dir=$(dirname "$SET")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Build debug APK
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AISZ-GAME-SPACE-apk
+          path: ${{ steps.find.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
