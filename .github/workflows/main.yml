@@ -2,20 +2,12 @@ name: Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Cari proyek
-        id: find
-        run: |
-          ZIP=$(find . -maxdepth 2 -iname '*.zip' | head -n 1)
-          if [ -n "$ZIP" ]; then echo "Membongkar: $ZIP"; unzip -oq "$ZIP"; fi
-          SET=$(find . -name settings.gradle -not -path './.git/*' | head -n 1)
-          if [ -z "$SET" ]; then echo "settings.gradle tidak ditemukan. Upload ZIP proyek ke repositori ini."; exit 1; fi
-          echo "dir=$(dirname "$SET")" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -23,10 +15,42 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Siapkan proyek
+        shell: bash
+        run: |
+          ZIP=$(ls *.zip 2>/dev/null | head -1)
+          BASE=.
+          if [ -n "$ZIP" ]; then
+            rm -rf _src && mkdir _src
+            unzip -q "$ZIP" -d _src
+            BASE=_src
+          fi
+          ROOT=$(dirname "$(find $BASE -name settings.gradle -not -path './.git/*' | head -1)")
+          echo "ROOT=$ROOT" >> $GITHUB_ENV
+          echo "Proyek: $ROOT"
       - name: Build debug APK
-        working-directory: ${{ steps.find.outputs.dir }}
-        run: gradle assembleDebug --no-daemon
+        shell: bash
+        run: |
+          set +e
+          cd "$ROOT"
+          gradle assembleDebug --no-daemon --console=plain > "$GITHUB_WORKSPACE/build.log" 2>&1
+          echo "BUILD_CODE=$?" >> $GITHUB_ENV
+          exit 0
+      - name: ERROR KOMPILASI
+        if: env.BUILD_CODE != '0'
+        shell: bash
+        run: |
+          echo "=========== ERROR KOMPILASI (screenshot bagian ini) ==========="
+          grep -E "^e: " build.log | sed -E 's#file:///home/runner/work/[^/]+/[^/]+/##' | head -60
+          echo "--------------------------------------------------------------"
+          grep -E "FAILED|error:|What went wrong" -A2 build.log | head -30
+          exit 1
+      - name: Kumpulkan APK
+        shell: bash
+        run: |
+          mkdir -p out
+          cp "$ROOT/app/build/outputs/apk/debug/app-debug.apk" out/AISZ-GAME-SPACE.apk
       - uses: actions/upload-artifact@v4
         with:
           name: AISZ-GAME-SPACE-apk
-          path: ${{ steps.find.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+          path: out/AISZ-GAME-SPACE.apk
