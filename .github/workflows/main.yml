@@ -28,8 +28,22 @@ jobs:
           ROOT=$(dirname "$(find $BASE -name settings.gradle -not -path './.git/*' | head -1)")
           echo "ROOT=$ROOT" >> $GITHUB_ENV
           echo "Proyek: $ROOT"
+      - name: Siapkan keystore
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ] || [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] || \
+             [ -z "${{ secrets.KEY_ALIAS }}" ] || [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD belum diisi di Settings > Secrets and variables > Actions. Lihat README.md bagian Keamanan dan keaslian APK."
+            exit 1
+          fi
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/aisz-release.keystore"
+          echo "AISZ_KEYSTORE_PATH=$RUNNER_TEMP/aisz-release.keystore" >> $GITHUB_ENV
       - name: Build debug APK
         shell: bash
+        env:
+          AISZ_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          AISZ_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          AISZ_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set +e
           cd "$ROOT"
