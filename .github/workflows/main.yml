@@ -37,6 +37,12 @@ jobs:
             exit 1
           fi
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/aisz-release.keystore"
+          SIZE=$(stat -c%s "$RUNNER_TEMP/aisz-release.keystore" 2>/dev/null || echo 0)
+          echo "Ukuran keystore hasil decode: $SIZE byte"
+          if [ "$SIZE" -lt 500 ]; then
+            echo "::error::Keystore hasil decode terlalu kecil ($SIZE byte) — kemungkinan isi secret KEYSTORE_BASE64 terpotong saat disalin. Salin ulang teks base64-nya secara utuh."
+            exit 1
+          fi
           echo "AISZ_KEYSTORE_PATH=$RUNNER_TEMP/aisz-release.keystore" >> $GITHUB_ENV
       - name: Build debug APK
         shell: bash
@@ -47,7 +53,7 @@ jobs:
         run: |
           set +e
           cd "$ROOT"
-          gradle assembleDebug --no-daemon --console=plain > "$GITHUB_WORKSPACE/build.log" 2>&1
+          gradle assembleDebug --no-daemon --console=plain --stacktrace > "$GITHUB_WORKSPACE/build.log" 2>&1
           echo "BUILD_CODE=$?" >> $GITHUB_ENV
           exit 0
       - name: ERROR KOMPILASI
@@ -57,7 +63,10 @@ jobs:
           echo "=========== ERROR KOMPILASI (screenshot bagian ini) ==========="
           grep -E "^e: " build.log | sed -E 's#file:///home/runner/work/[^/]+/[^/]+/##' | head -60
           echo "--------------------------------------------------------------"
-          grep -E "FAILED|error:|What went wrong" -A2 build.log | head -30
+          grep -E "FAILED|error:|What went wrong|Caused by|Keystore|keystore" -A3 build.log | head -60
+          echo "--------------------------------------------------------------"
+          echo "CADANGAN — 60 baris terakhir log mentah (selalu diisi, dipakai bila dua bagian di atas kosong):"
+          tail -n 60 build.log
           exit 1
       - name: Kumpulkan APK
         shell: bash
@@ -68,3 +77,10 @@ jobs:
         with:
           name: AISZ-GAME-SPACE-apk
           path: out/AISZ-GAME-SPACE.apk
+      - name: Simpan log build (selalu, untuk diagnosa)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
