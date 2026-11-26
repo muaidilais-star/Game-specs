@@ -31,18 +31,37 @@ jobs:
       - name: Siapkan keystore
         shell: bash
         run: |
-          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ] || [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] || \
+          set +e
+          HEX="${{ secrets.KEYSTORE_HEX }}"
+          if [ -z "$HEX" ] || [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] || \
              [ -z "${{ secrets.KEY_ALIAS }}" ] || [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "::error::Secret KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD belum diisi di Settings > Secrets and variables > Actions. Lihat README.md bagian Keamanan dan keaslian APK."
+            echo "::error::Secret KEYSTORE_HEX / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD belum diisi di Settings > Secrets and variables > Actions. Lihat README.md bagian Keamanan dan keaslian APK."
             exit 1
           fi
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/aisz-release.keystore"
-          SIZE=$(stat -c%s "$RUNNER_TEMP/aisz-release.keystore" 2>/dev/null || echo 0)
-          echo "Ukuran keystore hasil decode: $SIZE byte"
-          if [ "$SIZE" -lt 500 ]; then
-            echo "::error::Keystore hasil decode terlalu kecil ($SIZE byte) — kemungkinan isi secret KEYSTORE_BASE64 terpotong saat disalin. Salin ulang teks base64-nya secara utuh."
+          LEN=${#HEX}
+          echo "Panjang KEYSTORE_HEX yang diterima: $LEN karakter (harus 5492)"
+          if [ "$LEN" -ne 5492 ]; then
+            echo "::error::Panjang KEYSTORE_HEX salah ($LEN karakter, seharusnya 5492). Secret ini rusak/terpotong saat disalin — hapus secretnya, lalu buat ulang dan salin ULANG teks hex-nya secara utuh dari pesan AISZ."
             exit 1
           fi
+          python3 -c "
+          import sys
+          data = sys.argv[1]
+          try:
+              raw = bytes.fromhex(data)
+          except ValueError as e:
+              print('::error::Teks KEYSTORE_HEX mengandung karakter yang bukan hex (0-9a-f): ' + str(e))
+              sys.exit(1)
+          open(sys.argv[2], 'wb').write(raw)
+          " "$HEX" "$RUNNER_TEMP/aisz-release.keystore" || exit 1
+          GOT=$(sha256sum "$RUNNER_TEMP/aisz-release.keystore" | awk '{print $1}')
+          WANT="874a68dc8c1dc47eeddf3160818926fbad4afaa93cc8f1078b6558d1f346d4de"
+          echo "Checksum keystore hasil decode: $GOT"
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::Checksum keystore tidak cocok (dapat $GOT, seharusnya $WANT). File keystore rusak saat disalin walau panjangnya benar. Buat ulang secret KEYSTORE_HEX, salin ulang dengan hati-hati."
+            exit 1
+          fi
+          echo "Keystore terverifikasi cocok persis dengan aslinya."
           echo "AISZ_KEYSTORE_PATH=$RUNNER_TEMP/aisz-release.keystore" >> $GITHUB_ENV
       - name: Build debug APK
         shell: bash
