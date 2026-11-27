@@ -32,16 +32,18 @@ jobs:
         shell: bash
         run: |
           set +e
-          HEX="${{ secrets.KEYSTORE_HEX }}"
+          # Buang semua spasi, tab, dan baris baru yang mungkin ikut tersalin (umum terjadi saat
+          # menyalin teks panjang yang terbungkus baris di HP) sebelum memakainya.
+          HEX="$(printf '%s' "${{ secrets.KEYSTORE_HEX }}" | tr -d '[:space:]')"
           if [ -z "$HEX" ] || [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] || \
              [ -z "${{ secrets.KEY_ALIAS }}" ] || [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
             echo "::error::Secret KEYSTORE_HEX / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD belum diisi di Settings > Secrets and variables > Actions. Lihat README.md bagian Keamanan dan keaslian APK."
             exit 1
           fi
           LEN=${#HEX}
-          echo "Panjang KEYSTORE_HEX yang diterima: $LEN karakter (harus 5496)"
+          echo "Panjang KEYSTORE_HEX setelah spasi/baris baru dibuang: $LEN karakter (harus 5496)"
           if [ "$LEN" -ne 5496 ]; then
-            echo "::error::Panjang KEYSTORE_HEX salah ($LEN karakter, seharusnya 5496). Secret ini rusak/terpotong saat disalin — hapus secretnya, lalu buat ulang dan salin ULANG teks hex-nya secara utuh dari pesan AISZ."
+            echo "::error::Panjang KEYSTORE_HEX salah ($LEN karakter, seharusnya 5496) bahkan setelah spasi/baris baru dibuang. Berarti ada karakter hex yang benar-benar hilang atau tertukar saat disalin — hapus secretnya, lalu buat ulang dan salin ULANG teks hex-nya dari pesan AISZ."
             exit 1
           fi
           python3 -c "
